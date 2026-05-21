@@ -43,6 +43,20 @@
       Impersonate="no"
       ExeCommand='&quot;[WindowsFolder]SysWOW64\regsvr32.exe&quot; /s /u &quot;[#OpenLessImeDllX86]&quot;'
       Return="ignore" />
+    <CustomAction
+      Id="UnregisterOpenLessImeX64ForUninstall"
+      Directory="INSTALLDIR"
+      Execute="deferred"
+      Impersonate="no"
+      ExeCommand='&quot;[System64Folder]regsvr32.exe&quot; /s /u &quot;[#OpenLessImeDllX64]&quot;'
+      Return="ignore" />
+    <CustomAction
+      Id="UnregisterOpenLessImeX86ForUninstall"
+      Directory="INSTALLDIR"
+      Execute="deferred"
+      Impersonate="no"
+      ExeCommand='&quot;[WindowsFolder]SysWOW64\regsvr32.exe&quot; /s /u &quot;[#OpenLessImeDllX86]&quot;'
+      Return="ignore" />
 
     <InstallExecuteSequence>
       <!-- Issue #321: unregister the old DLL before InstallFiles whenever a
@@ -52,6 +66,8 @@
            uninstall and skipped the auto-update / minor-upgrade path. -->
       <Custom Action="UnregisterOpenLessImeX86" Before="InstallFiles"><![CDATA[Installed AND NOT REMOVE]]></Custom>
       <Custom Action="UnregisterOpenLessImeX64" Before="UnregisterOpenLessImeX86"><![CDATA[Installed AND NOT REMOVE]]></Custom>
+      <Custom Action="UnregisterOpenLessImeX86ForUninstall" Before="RemoveFiles"><![CDATA[REMOVE="ALL"]]></Custom>
+      <Custom Action="UnregisterOpenLessImeX64ForUninstall" Before="UnregisterOpenLessImeX86ForUninstall"><![CDATA[REMOVE="ALL"]]></Custom>
       <Custom Action="RegisterOpenLessImeX64" After="InstallFiles"><![CDATA[NOT REMOVE]]></Custom>
       <Custom Action="RegisterOpenLessImeX86" After="RegisterOpenLessImeX64"><![CDATA[NOT REMOVE]]></Custom>
     </InstallExecuteSequence>

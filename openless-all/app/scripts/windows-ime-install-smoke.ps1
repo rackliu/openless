@@ -14,13 +14,15 @@ $ProfileGuid = "{9B5F5E04-23F6-47DA-9A26-D221F6C3F02E}"
 $KeyboardCategoryGuid = "{34745C63-B2F0-4784-8B67-5E12C8701A31}"
 $ImmersiveCategoryGuid = "{13A016DF-560B-46CD-947A-4C3AF1E0E35D}"
 $SystrayCategoryGuid = "{25504FB4-7BAB-4BC1-9C69-CF81890F0EF5}"
+$SimplifiedLangId = "0x00000804"
+$TraditionalLangId = "0x00000404"
 
 function Resolve-OpenLessLangId {
   $lang = [System.Globalization.CultureInfo]::InstalledUICulture.Name.ToLowerInvariant()
   if ($lang -like "zh-tw*" -or $lang -like "zh-hk*" -or $lang -like "zh-mo*" -or $lang -like "zh-hant*") {
-    return "0x00000404"
+    return $TraditionalLangId
   }
-  return "0x00000804"
+  return $SimplifiedLangId
 }
 
 $LangId = Resolve-OpenLessLangId
@@ -112,6 +114,28 @@ function Assert-RegistryKey {
   Write-Host "[ok] $Label registry key present ($View)"
 }
 
+function Assert-RegistryKeyAbsent {
+  param(
+    [Parameter(Mandatory = $true)]
+    [Microsoft.Win32.RegistryView]$View,
+    [Parameter(Mandatory = $true)]
+    [string]$SubKey,
+    [Parameter(Mandatory = $true)]
+    [string]$Label
+  )
+
+  $key = Open-LocalMachineSubKey -View $View -SubKey $SubKey
+  if ($null -ne $key) {
+    try {
+      $defaultValue = [string]$key.GetValue("")
+    } finally {
+      $key.Close()
+    }
+    throw "Unexpected $Label registry key after uninstall ($View): HKLM\$SubKey (default='$defaultValue')"
+  }
+  Write-Host "[ok] $Label registry key removed ($View)"
+}
+
 function Get-DefaultRegistryValue {
   param(
     [Parameter(Mandatory = $true)]
@@ -174,6 +198,49 @@ function Assert-OpenLessImeInstalled {
   return $installRoot
 }
 
+function Assert-OpenLessImeUninstalled {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$InstallRoot
+  )
+
+  $comKey = "Software\Classes\CLSID\$TextServiceClsid\InprocServer32"
+  Assert-RegistryKeyAbsent -View Registry64 -SubKey $comKey -Label "x64 COM"
+  Assert-RegistryKeyAbsent -View Registry32 -SubKey $comKey -Label "x86 COM"
+
+  foreach ($candidateLangId in @($SimplifiedLangId, $TraditionalLangId)) {
+    Assert-RegistryKeyAbsent -View Registry64 -SubKey "Software\Microsoft\CTF\TIP\$TextServiceClsid\LanguageProfile\$candidateLangId\$ProfileGuid" -Label "TSF language profile ($candidateLangId)"
+  }
+  Assert-RegistryKeyAbsent -View Registry64 -SubKey "Software\Microsoft\CTF\TIP\$TextServiceClsid\Category\Category\$KeyboardCategoryGuid\$TextServiceClsid" -Label "TSF keyboard category"
+  Assert-RegistryKeyAbsent -View Registry64 -SubKey "Software\Microsoft\CTF\TIP\$TextServiceClsid\Category\Category\$ImmersiveCategoryGuid\$TextServiceClsid" -Label "TSF immersive category"
+  Assert-RegistryKeyAbsent -View Registry64 -SubKey "Software\Microsoft\CTF\TIP\$TextServiceClsid\Category\Category\$SystrayCategoryGuid\$TextServiceClsid" -Label "TSF systray category"
+
+  $allBackendKeys = @(
+    "Software\Classes\CLSID\$TextServiceClsid\InprocServer32",
+    "Software\WOW6432Node\Classes\CLSID\$TextServiceClsid\InprocServer32",
+    "Software\Microsoft\CTF\TIP\$TextServiceClsid\LanguageProfile\$SimplifiedLangId\$ProfileGuid",
+    "Software\Microsoft\CTF\TIP\$TextServiceClsid\LanguageProfile\$TraditionalLangId\$ProfileGuid",
+    "Software\Microsoft\CTF\TIP\$TextServiceClsid\Category\Category\$KeyboardCategoryGuid\$TextServiceClsid",
+    "Software\Microsoft\CTF\TIP\$TextServiceClsid\Category\Category\$ImmersiveCategoryGuid\$TextServiceClsid",
+    "Software\Microsoft\CTF\TIP\$TextServiceClsid\Category\Category\$SystrayCategoryGuid\$TextServiceClsid"
+  )
+
+  foreach ($key in $allBackendKeys) {
+    Assert-RegistryKeyAbsent -View Registry64 -SubKey $key -Label "backend-required"
+  }
+
+  $x64Dll = Join-Path $InstallRoot "windows-ime\x64\OpenLessIme.dll"
+  $x86Dll = Join-Path $InstallRoot "windows-ime\x86\OpenLessIme.dll"
+  if (Test-Path -LiteralPath $x64Dll -PathType Leaf) {
+    throw "x64 IME DLL still exists after uninstall: $x64Dll"
+  }
+  if (Test-Path -LiteralPath $x86Dll -PathType Leaf) {
+    throw "x86 IME DLL still exists after uninstall: $x86Dll"
+  }
+
+  Write-Host "[ok] Windows IME backend would report uninstalled"
+}
+
 function Uninstall-OpenLess {
   param(
     [Parameter(Mandatory = $true)]
@@ -205,4 +272,5 @@ if ($InstallerKind -eq "nsis") {
 $installRoot = Assert-OpenLessImeInstalled
 if (-not $SkipUninstall) {
   Uninstall-OpenLess -InstallRoot $installRoot
+  Assert-OpenLessImeUninstalled -InstallRoot $installRoot
 }
